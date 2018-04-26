@@ -1,0 +1,17 @@
+#!/bin/bash 
+
+#if OPENSHMEM is set to 1 
+export OPENSHMEM_HOME=/opt/mvapich2-x/gnu
+# if OPENSHMEM is set to 0
+export MPI_HOME=/ivylogin/home/spotluri/MPI/mvapich2-2.2/install
+export CUDA_HOME=/usr/local/cuda-9.0
+
+#toggle trace generation functionality
+export TRACING=0
+export BLOCKLEVEL_TRACING=1 
+
+#idea is to assume a zero latency, infinite bandwidth network. however yet to find a way to retain synchronization
+export IDEALIZE=0
+
+#use OpenSHMEM instead of MPI as the underlying CPU-CPU communication transport
+export OPENSHMEM=0

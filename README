@@ -1,0 +1,175 @@
+NVSHMEM Overview
+****************
+
+NVSHMEM prototype is a minimal subset of API defined in OpenSHMEM v1.1.  The
+primary goal of NVSHMEM is to enable CUDA threads to initiate inter-process
+data movement from the GPU. It uses the memory model and communication
+semantics similar to what is defined in the OpenSHMEM Specification 1.1
+document (http://bongo.cs.uh.edu/site/Specification). Any changes in the
+semantics is described in the spreadsheet available with this distribution.
+Note that only dynamically allocated symmetric objects are supported in NVSHMEM
+(does not support global and static variables). 
+
+The API calls are intentionally designed to be very similar to the OpenSHMEM
+API but are prepended with "nv" to avoid conflicts with any existing OpenSHMEM
+calls in applications. 
+
+Emulation Platform 
+******************
+
+NVSHMEM is currently implemented over an emulation platform based on the P2P
+protocol available in CUDA (CUDA IPC).  P2P protocol allows direct data
+movement between GPUs connected under the same PCIe root complex, completely
+bypassing the CPU. NVSHMEM is currently supported only for MPI application as 
+it internally uses MPI for host-based communication and synchronization. For this 
+reason, NVSHMEM has to be initialized after MPI initialization in the application and
+cleaned up before MPI finalize is called. 
+
+NVSHMEM API 
+***********
+
+NVSHMEM currently supports the following API that can be called from the host
+code or from inside device code, as categorized below. 
+
+Host API
+********
+
+/* 
+ * Called to initialize the NVSHMEM environment and resources. This has to be
+ * called after MPI initialization routine is application. 
+ */
+void nvstart_pes ()
+ 
+/* 
+ * Called to cleanup NVSHMEM resources and finalize the library. This has to be
+ * called before MPI finalization routine is called. 
+ */
+void nvstop_pes ()
+
+/* 
+ * Returns the PE number of the calling PE. Same as shmem_my_pe() in OpenSHMEM. 
+ * /
+int nvshmem_my_pe ()
+
+/* 
+ * Returns the number of PEs running in the application. Same as shmem_n_pes in OpenSHMEM.  
+ * /
+int nvshmem_n_pes ()
+
+/*
+ * Returns a pointer to block of size bytes allocated from the
+ * symmetric heap. It is collective across all PEs and the value of size should
+ * be same across all PEs. Same as shmalloc in OpenSHMEM. 
+ * 
+ * \param size - in bytes, size of the block to be allocated, has to be the
+ * same value at all processes (to maintaing symmetry). 
+ */
+void *nvshmalloc (size_t size)
+
+/*
+ * Frees up all the allocations made on the symmetric heap until this point.
+ * The application can continue to run and make fresh allocations. 
+ */
+void nvshmcleanup ()
+
+/*
+ * Is a collective call that ensures the arrival of all PEs before any PE exits the call. It guarantees all local
+ * and remote memory updates from the GPU done by all PEs are completed when any PE exits the call. Same as 
+ * shmem_barrier_all in OpenSHMEM. 
+ */
+void nvshmem_barrier_all ()
+
+/*
+ * Similar to nvshmem_barrier_all but does not require the CPU to block until it completes. The CPU can return immediately 
+ * and the operation is completed efficiently on the device. It enusres all local and remote memory updates issued before the 
+ * call are complete before the call completes on the device. 
+ **/
+void nvshmem_barrier_all_offload ()
+
+/*
+ * Returns the actual address of the symmetric object at the remote PE for direct loads/stores from inside CUDA kernel.
+ * Same as shmem_ptr in OpenSHMEM. 
+ *
+ * \param addr - the symmetric object to be acccessed
+ * \param pe - the number of remote PE 
+ */
+void *nvshmem_ptr (void *addr, int pe)
+
+Device API
+----------
+
+/*
+ * Single element put routines. Copy one data element to the remote PE. Same as 
+ * shmem_float_p, shmem_int_p and others in OpenSHMEM. 
+ *
+ * \param target - the symmetric data object to write data to at remote_pe
+ * \param remote_pe - 	the number of remote PE 
+ * 
+ * /
+void nvshmem_double_p (double *target, double value, int remote_pe)
+void nvshmem_float_p (float *target, float value, int remote_pe)
+void nvshmem_int_p (int *target, int value, int pe)
+
+/*
+ * Single elemental get routines. Copy one data element from the remote PE. Same as
+ * shmem_float_g, shmem_int_g and others in OpenSHMEM.
+ *
+ * \param source - the symmetric data object at remote_pe from where data is read
+ * \param remote_pe - the number of remote PE
+ *
+ * /
+double nvshmem_double_g (double *source, int pe)
+float nvshmem_float_g (float *source, int pe)
+int nvshmem_float_g (int *source, int pe)
+
+/*
+ * Bulk put routines. Copy len number of elements to the remote PE. Same as
+ * shmem_float_put, shmem_int_put and others in OpenSHMEM.
+ *
+ * \param target - the symmetric data object to write data to, at remote pe 
+ * \param source - the symmetric data object to read data from, locally
+ * \param remote_pe - the number of remote PE
+ *
+ * /
+void nvshmem_double_put (double *target, double *source, int len, int pe)
+void nvshmem_float_put (float *target, float *source, int len, int pe)
+void nvshmem_int_put (int *target, int *source, int len, int pe)
+
+/*
+ * Bulk get routines. Copy len number of elements from the remote PE. Same as
+ * shmem_float_get, shmem_int_get and others in OpenSHMEM.
+ *
+ * \param target - the symmetric data object to write data to, locally 
+ * \param source - the symmetric data object to read data from, at remote pe
+ * \param remote_pe - the number of remote PE
+ *
+ * /
+void nvshmem_double_get (double *target, double *source, int len, int pe)
+void nvshmem_float_get (float *target, float *source, int len, int pe)
+void nvshmem_int_get (int *target, int *source, int len, int pe)
+
+/*
+ * It guarantees all memory updates issued by the calling thread are visible to other threads 
+ * before this call returns.
+ * /
+void nvshmem_quiet()
+
+/*
+ * Blocks until the value at ivar becomes not equal to cmp_value 
+ * 
+ * \param ivar - the symmetric data object on which to poll 
+ * \param - the value to be used for comparison
+ *
+ * /
+void nvshmem_int_wait(int *ivar, int cmp_value)
+
+/*
+ * Blocks until the value at ivar becomes equal to cmp_value 
+ * 
+ * \param ivar - the symmetric data object on which to poll 
+ * \param cmp - ignored currently, in OpenSHMEM this allows for a user to specify the type of comparison operator
+ * \param - the value to be used for comparison
+ *
+ * /
+void nvshmem_int_wait_until(int *ivar, int cmp, int cmp_value)
+
